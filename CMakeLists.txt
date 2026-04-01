@@ -104,6 +104,9 @@ endmacro()
 add_library(tts_core OBJECT
     src/config/config.cpp
     src/logging/logger.cpp
+    src/tts/voxtral_backend.cpp
+    src/tts/voices.cpp
+    src/tts/inference_pool.cpp
 )
 target_include_directories(tts_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
