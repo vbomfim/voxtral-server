@@ -107,6 +107,11 @@ add_library(tts_core OBJECT
     src/tts/voxtral_backend.cpp
     src/tts/voices.cpp
     src/tts/inference_pool.cpp
+    src/server/metrics.cpp
+    src/server/auth.cpp
+    src/server/validation.cpp
+    src/server/request_handler.cpp
+    src/server/server.cpp
 )
 target_include_directories(tts_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -114,27 +119,28 @@ target_include_directories(tts_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 tts_add_system_includes(tts_core)
+# Suppress warnings from prometheus-cpp headers
+get_target_property(_prom_core_inc prometheus-cpp::core INTERFACE_INCLUDE_DIRECTORIES)
+if(_prom_core_inc)
+    target_include_directories(tts_core SYSTEM PUBLIC ${_prom_core_inc})
+endif()
 target_compile_options(tts_core PRIVATE ${TTS_COMPILE_OPTIONS})
 target_link_libraries(tts_core PUBLIC
     nlohmann_json::nlohmann_json
     spdlog::spdlog
     tomlplusplus::tomlplusplus
+    prometheus-cpp::core
 )
 
 # --- Main server target ---
 add_executable(tts_server src/main.cpp)
 tts_add_system_includes(tts_server)
-get_target_property(_prom_inc prometheus-cpp::core INTERFACE_INCLUDE_DIRECTORIES)
-if(_prom_inc)
-    target_include_directories(tts_server SYSTEM PRIVATE ${_prom_inc})
-endif()
 target_compile_options(tts_server PRIVATE ${TTS_COMPILE_OPTIONS})
 if(TTS_LINK_OPTIONS)
     target_link_options(tts_server PRIVATE ${TTS_LINK_OPTIONS})
 endif()
 target_link_libraries(tts_server PRIVATE
     tts_core
-    prometheus-cpp::core
 )
 
 # --- Tests ---

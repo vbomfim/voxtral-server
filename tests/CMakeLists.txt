@@ -15,6 +15,11 @@ add_executable(tts_tests
     test_backend.cpp
     test_voices.cpp
     test_inference_pool.cpp
+    test_metrics.cpp
+    test_auth.cpp
+    test_validation.cpp
+    test_request_handler.cpp
+    test_server.cpp
 )
 tts_configure_test_target(tts_tests)
 include(GoogleTest)
