@@ -1,0 +1,10 @@
+# Git submodules — not yet added (upstream repos may not be stable)
+# Uncomment and run `git submodule update --init --recursive` when ready.
+#
+# [submodule "third_party/uWebSockets"]
+# 	path = third_party/uWebSockets
+# 	url = https://github.com/uNetworking/uWebSockets.git
+#
+# [submodule "third_party/voxtral-tts.c"]
+# 	path = third_party/voxtral-tts.c
+# 	url = https://github.com/mudler/voxtral-tts.c.git
