@@ -96,6 +96,57 @@ set(HTTPLIB_REQUIRE_ZLIB OFF CACHE BOOL "" FORCE)
 set(HTTPLIB_REQUIRE_BROTLI OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(httplib)
 
+# --- voxtral-tts.c inference engine (C11 library) ---
+option(TTS_USE_STUB_BACKEND "Use stub backend instead of real voxtral-tts.c engine" OFF)
+
+set(VOXTRAL_TTS_C_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/voxtral-tts.c")
+set(VOXTRAL_TTS_C_HEADER "${VOXTRAL_TTS_C_DIR}/voxtral_tts.h")
+
+if(NOT TTS_USE_STUB_BACKEND AND EXISTS "${VOXTRAL_TTS_C_HEADER}")
+    message(STATUS "voxtral-tts.c engine found — building real backend")
+
+    add_library(voxtral_tts_c STATIC
+        ${VOXTRAL_TTS_C_DIR}/voxtral_tts.c
+        ${VOXTRAL_TTS_C_DIR}/voxtral_tts_safetensors.c
+        ${VOXTRAL_TTS_C_DIR}/voxtral_tts_kernels.c
+        ${VOXTRAL_TTS_C_DIR}/voxtral_tts_llm.c
+        ${VOXTRAL_TTS_C_DIR}/voxtral_tts_acoustic.c
+        ${VOXTRAL_TTS_C_DIR}/voxtral_tts_codec.c
+        ${VOXTRAL_TTS_C_DIR}/voxtral_tts_voice.c
+        ${VOXTRAL_TTS_C_DIR}/voxtral_tts_wav.c
+        ${VOXTRAL_TTS_C_DIR}/voxtral_tts_tokenizer.c
+    )
+    set_target_properties(voxtral_tts_c PROPERTIES
+        C_STANDARD 11
+        C_STANDARD_REQUIRED ON
+        C_EXTENSIONS OFF
+    )
+    target_include_directories(voxtral_tts_c PUBLIC ${VOXTRAL_TTS_C_DIR})
+    target_compile_options(voxtral_tts_c PRIVATE -O3 -DUSE_BLAS)
+
+    # Platform-specific BLAS: Apple Accelerate on macOS, OpenBLAS on Linux
+    if(APPLE)
+        target_link_libraries(voxtral_tts_c PUBLIC "-framework Accelerate")
+    else()
+        find_package(BLAS REQUIRED)
+        target_link_libraries(voxtral_tts_c PUBLIC ${BLAS_LIBRARIES})
+        find_path(OPENBLAS_INCLUDE_DIR cblas.h PATHS /usr/include/openblas)
+        if(OPENBLAS_INCLUDE_DIR)
+            target_include_directories(voxtral_tts_c PRIVATE ${OPENBLAS_INCLUDE_DIR})
+        endif()
+    endif()
+    target_link_libraries(voxtral_tts_c PUBLIC m)
+
+    set(TTS_HAS_VOXTRAL_ENGINE ON)
+else()
+    if(TTS_USE_STUB_BACKEND)
+        message(STATUS "Stub backend requested — skipping voxtral-tts.c engine")
+    else()
+        message(STATUS "voxtral-tts.c header not found — using stub backend")
+    endif()
+    set(TTS_HAS_VOXTRAL_ENGINE OFF)
+endif()
+
 # --- Macro: mark third-party headers as SYSTEM to suppress -Werror ---
 macro(tts_add_system_includes TARGET_NAME)
     get_target_property(_spdlog_inc spdlog::spdlog INTERFACE_INCLUDE_DIRECTORIES)
@@ -149,6 +200,12 @@ target_link_libraries(tts_core PUBLIC
     prometheus-cpp::core
     httplib::httplib
 )
+
+# Wire real voxtral-tts.c engine into tts_core when available
+if(TTS_HAS_VOXTRAL_ENGINE)
+    target_compile_definitions(tts_core PUBLIC TTS_HAS_VOXTRAL_ENGINE)
+    target_link_libraries(tts_core PUBLIC voxtral_tts_c)
+endif()
 
 # --- Main server target ---
 add_executable(tts_server src/main.cpp)
