@@ -351,3 +351,161 @@ TEST(InferencePool, ExpiredJobsStartsAtZero) {
     InferencePool pool(mock, 10, 60);
     EXPECT_EQ(pool.expired_jobs(), 0);
 }
+
+// ============================================================================
+// Finding 1 — Throwing callback does NOT kill the worker thread
+// ============================================================================
+
+TEST(InferencePool, ThrowingOnSuccessDoesNotKillPool) {
+    auto mock = make_mock();
+    InferencePool pool(mock, 10, 60);
+
+    std::mutex mu;
+    std::condition_variable cv;
+    bool second_done = false;
+
+    // First job: on_success deliberately throws.
+    auto throwing_job = make_job(
+        [](SynthesisResult) {
+            throw std::runtime_error("Callback explosion");
+        });
+    pool.submit(std::move(throwing_job));
+
+    // Second job: normal callback — must still be delivered.
+    auto normal_job = make_job(
+        [&](SynthesisResult) {
+            std::lock_guard lk(mu);
+            second_done = true;
+            cv.notify_one();
+        });
+    pool.submit(std::move(normal_job));
+
+    {
+        std::unique_lock lk(mu);
+        ASSERT_TRUE(cv.wait_for(lk, 5s, [&] { return second_done; }))
+            << "Second job not processed — throwing callback killed the worker";
+    }
+}
+
+// ============================================================================
+// Finding 3 — Default deadline computed from request_timeout_seconds
+// ============================================================================
+
+TEST(InferencePool, DefaultDeadlineAppliedWhenOmitted) {
+    auto mock = make_mock();
+    InferencePool pool(mock, 10, /*request_timeout_seconds=*/5);
+
+    std::mutex mu;
+    std::condition_variable cv;
+    bool done = false;
+
+    // Leave deadline at default (epoch sentinel).
+    InferenceJob job;
+    job.request.text = "Deadline should be auto-set";
+    job.request.voice = "neutral_female";
+    // job.deadline deliberately left at {} (epoch)
+    job.on_success = [&](SynthesisResult) {
+        std::lock_guard lk(mu);
+        done = true;
+        cv.notify_one();
+    };
+    job.on_error = [](std::string err) {
+        FAIL() << "on_error should not be called — pool should have set a valid "
+                  "deadline, but got: " << err;
+    };
+
+    EXPECT_TRUE(pool.submit(std::move(job)));
+
+    // If the pool did NOT set a deadline, epoch is in the past → immediate
+    // expiry → on_error.  Success proves the pool applied the timeout.
+    {
+        std::unique_lock lk(mu);
+        ASSERT_TRUE(cv.wait_for(lk, 5s, [&] { return done; }))
+            << "on_success not called — pool may not have applied default deadline";
+    }
+
+    EXPECT_EQ(pool.expired_jobs(), 0);
+}
+
+// ============================================================================
+// Finding 4 — Post-synthesis deadline check
+// ============================================================================
+
+TEST(InferencePool, PostSynthesisDeadlineCheck) {
+    auto mock = make_mock();
+    mock->latency_ms = 200;  // Inference takes 200 ms
+
+    InferencePool pool(mock, 10, 60);
+
+    std::mutex mu;
+    std::condition_variable cv;
+    bool error_received = false;
+    std::string error_msg;
+
+    // Tight deadline: 50 ms.  Inference (200 ms) will overshoot it.
+    InferenceJob job;
+    job.request.text = "Should exceed deadline during inference";
+    job.request.voice = "neutral_female";
+    job.deadline = std::chrono::steady_clock::now() + 50ms;
+    job.on_success = [](SynthesisResult) {
+        FAIL() << "on_success must not be called when deadline expires during inference";
+    };
+    job.on_error = [&](std::string err) {
+        std::lock_guard lk(mu);
+        error_msg = std::move(err);
+        error_received = true;
+        cv.notify_one();
+    };
+
+    pool.submit(std::move(job));
+
+    {
+        std::unique_lock lk(mu);
+        ASSERT_TRUE(cv.wait_for(lk, 5s, [&] { return error_received; }))
+            << "on_error not invoked within 5 seconds";
+    }
+
+    EXPECT_NE(error_msg.find("deadline"), std::string::npos)
+        << "Error message should mention 'deadline', got: " << error_msg;
+}
+
+// ============================================================================
+// Finding 6 — Concurrent submit stress test
+// ============================================================================
+
+TEST(InferencePool, ConcurrentSubmitStressTest) {
+    auto mock = make_mock();
+    InferencePool pool(mock, /*max_queue_depth=*/500, 60);
+
+    constexpr int kThreads = 8;
+    constexpr int kJobsPerThread = 50;
+
+    std::atomic<int> completed{0};
+    std::atomic<int> submitted{0};
+
+    std::vector<std::thread> threads;
+    threads.reserve(kThreads);
+
+    for (int t = 0; t < kThreads; ++t) {
+        threads.emplace_back([&]() {
+            for (int j = 0; j < kJobsPerThread; ++j) {
+                auto job = make_job(
+                    [&](SynthesisResult) {
+                        completed.fetch_add(1, std::memory_order_relaxed);
+                    });
+                if (pool.submit(std::move(job))) {
+                    submitted.fetch_add(1, std::memory_order_relaxed);
+                }
+            }
+        });
+    }
+
+    for (auto& th : threads) {
+        th.join();
+    }
+
+    pool.shutdown();  // Drains all in-flight work
+
+    EXPECT_EQ(completed.load(), submitted.load());
+    EXPECT_GT(submitted.load(), 0);
+}

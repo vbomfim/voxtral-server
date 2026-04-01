@@ -24,6 +24,9 @@ gtest_discover_tests(tts_tests)
 add_executable(tts_qa_tests
     test_config_integration.cpp
     test_logger_integration.cpp
+    test_inference_pool_integration.cpp
+    test_wav_contract.cpp
+    test_voices_integration.cpp
 )
 tts_configure_test_target(tts_qa_tests)
 gtest_discover_tests(tts_qa_tests)

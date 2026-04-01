@@ -14,6 +14,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -82,6 +83,17 @@ TEST(VoxtralBackend, InitializeWithNonexistentPathFails) {
 TEST(VoxtralBackend, ModelNameReturnsVoxtral4b) {
     VoxtralBackend backend;
     EXPECT_EQ(backend.model_name(), "voxtral-4b");
+}
+
+// ============================================================================
+// VoxtralBackend — synthesize() precondition (Finding 2)
+// ============================================================================
+
+TEST(VoxtralBackend, SynthesizeBeforeInitializeThrows) {
+    VoxtralBackend backend;
+    SynthesisRequest req;
+    req.text = "Should throw";
+    EXPECT_THROW((void)backend.synthesize(req), std::logic_error);
 }
 
 // ============================================================================

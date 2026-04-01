@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -22,8 +23,12 @@ namespace {
 /// Build a valid WAV file: RIFF header + silent PCM data.
 /// @param sample_rate  Samples per second (e.g. 24000).
 /// @param duration_sec Duration in seconds.
-/// @return Complete WAV file bytes (header + data).
+/// @return Complete WAV file bytes (header + data), or empty on invalid input.
 std::vector<uint8_t> build_silent_wav(int sample_rate, double duration_sec) {
+    if (sample_rate <= 0 || duration_sec < 0.0) {
+        return {};
+    }
+
     const int channels = 1;
     const int bits_per_sample = 16;
     const int bytes_per_sample = bits_per_sample / 8;
@@ -107,6 +112,11 @@ bool VoxtralBackend::initialize(const std::string& model_path) {
 }
 
 SynthesisResult VoxtralBackend::synthesize(const SynthesisRequest& request) {
+    if (!initialized_) {
+        throw std::logic_error(
+            "VoxtralBackend::synthesize() called before successful initialize()");
+    }
+
     auto t_start = std::chrono::steady_clock::now();
 
     // TODO: Replace stub with real voxtral-tts.c calls when submodule is added

@@ -26,7 +26,11 @@ namespace tts {
 /// A single unit of work for the inference worker thread.
 struct InferenceJob {
     SynthesisRequest request;
-    std::chrono::steady_clock::time_point deadline;  // submission_time + timeout
+
+    /// Deadline for this job.  If left default-constructed (epoch sentinel),
+    /// InferencePool::submit() fills it with `now + request_timeout_seconds`.
+    std::chrono::steady_clock::time_point deadline{};
+
     std::function<void(SynthesisResult)> on_success;
     std::function<void(std::string error)> on_error;
 };

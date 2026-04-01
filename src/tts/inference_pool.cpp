@@ -9,6 +9,23 @@
 #include <stdexcept>
 #include <utility>
 
+namespace {
+
+/// RAII guard: increments an atomic counter on construction, decrements on
+/// destruction.  Ensures active-job count stays correct even when callbacks
+/// throw or the loop issues `continue`.
+struct ActiveGuard {
+    std::atomic<int>& counter;
+    explicit ActiveGuard(std::atomic<int>& c) noexcept : counter(c) {
+        counter.fetch_add(1, std::memory_order_acq_rel);
+    }
+    ~ActiveGuard() { counter.fetch_sub(1, std::memory_order_acq_rel); }
+    ActiveGuard(const ActiveGuard&) = delete;
+    ActiveGuard& operator=(const ActiveGuard&) = delete;
+};
+
+}  // namespace
+
 namespace tts {
 
 InferencePool::InferencePool(std::shared_ptr<ITtsBackend> backend,
@@ -35,6 +52,12 @@ InferencePool::~InferencePool() {
 }
 
 bool InferencePool::submit(InferenceJob job) {
+    // Apply default deadline when the caller leaves it at the epoch sentinel.
+    if (job.deadline == std::chrono::steady_clock::time_point{}) {
+        job.deadline = std::chrono::steady_clock::now()
+                     + std::chrono::seconds(request_timeout_seconds_);
+    }
+
     {
         std::lock_guard lock(mutex_);
         if (!accepting_.load(std::memory_order_acquire)) {
@@ -96,31 +119,68 @@ void InferencePool::worker_loop() {
             queue_.pop();
         }
 
-        // Check deadline before starting expensive inference
-        auto now = std::chrono::steady_clock::now();
-        if (now >= job.deadline) {
+        // Pre-inference deadline check — skip if already expired in queue.
+        if (std::chrono::steady_clock::now() >= job.deadline) {
             expired_.fetch_add(1, std::memory_order_relaxed);
             spdlog::warn("InferencePool — job expired in queue, skipping inference");
-            if (job.on_error) {
-                job.on_error("Request timed out in queue");
+            try {
+                if (job.on_error) {
+                    job.on_error("Request timed out in queue");
+                }
+            } catch (const std::exception& e) {
+                spdlog::error("InferencePool — on_error callback threw: {}", e.what());
             }
             continue;
         }
 
-        // Run inference
-        active_.fetch_add(1, std::memory_order_acq_rel);
-        try {
-            auto result = backend_->synthesize(job.request);
-            if (job.on_success) {
-                job.on_success(std::move(result));
+        // Run inference under RAII active-counter guard.
+        {
+            ActiveGuard guard(active_);
+
+            bool synthesize_ok = false;
+            SynthesisResult result;
+
+            try {
+                result = backend_->synthesize(job.request);
+                synthesize_ok = true;
+            } catch (const std::exception& e) {
+                spdlog::error("InferencePool — inference failed: {}", e.what());
+                try {
+                    if (job.on_error) {
+                        job.on_error(std::string("Inference failed: ") + e.what());
+                    }
+                } catch (const std::exception& cb_ex) {
+                    spdlog::error("InferencePool — on_error callback threw: {}",
+                                  cb_ex.what());
+                }
             }
-        } catch (const std::exception& e) {
-            spdlog::error("InferencePool — inference failed: {}", e.what());
-            if (job.on_error) {
-                job.on_error(std::string("Inference failed: ") + e.what());
+
+            if (synthesize_ok) {
+                // Post-synthesis deadline check — inference may have taken
+                // longer than the remaining budget.
+                if (std::chrono::steady_clock::now() >= job.deadline) {
+                    spdlog::warn("InferencePool — request exceeded deadline "
+                                 "during inference");
+                    try {
+                        if (job.on_error) {
+                            job.on_error("Request exceeded deadline during inference");
+                        }
+                    } catch (const std::exception& e) {
+                        spdlog::error("InferencePool — on_error callback threw: {}",
+                                      e.what());
+                    }
+                } else {
+                    try {
+                        if (job.on_success) {
+                            job.on_success(std::move(result));
+                        }
+                    } catch (const std::exception& e) {
+                        spdlog::error("InferencePool — on_success callback threw: {}",
+                                      e.what());
+                    }
+                }
             }
-        }
-        active_.fetch_sub(1, std::memory_order_acq_rel);
+        }  // ~ActiveGuard — always decrements active_
     }
 }
 

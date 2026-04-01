@@ -30,8 +30,8 @@ public:
     /// Find a voice by ID. Returns nullptr if not found.
     [[nodiscard]] const Voice* find(const std::string& id) const;
 
-    /// Return all voices in the catalog.
-    [[nodiscard]] std::vector<Voice> all() const;
+    /// Return all voices in the catalog (by const reference — no copy).
+    [[nodiscard]] const std::vector<Voice>& all() const;
 
     /// Return all voices matching the given language code.
     [[nodiscard]] std::vector<Voice> by_language(const std::string& language) const;

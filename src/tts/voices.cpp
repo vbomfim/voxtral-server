@@ -46,22 +46,18 @@ VoiceCatalog::VoiceCatalog() {
 }
 
 const Voice* VoiceCatalog::find(const std::string& id) const {
-    auto it = std::find_if(voices_.begin(), voices_.end(),
-                           [&id](const Voice& v) { return v.id == id; });
-    if (it == voices_.end()) {
-        return nullptr;
-    }
-    return &(*it);
+    auto it = std::ranges::find(voices_, id, &Voice::id);
+    return it != voices_.end() ? &(*it) : nullptr;
 }
 
-std::vector<Voice> VoiceCatalog::all() const {
+const std::vector<Voice>& VoiceCatalog::all() const {
     return voices_;
 }
 
 std::vector<Voice> VoiceCatalog::by_language(const std::string& language) const {
     std::vector<Voice> result;
-    std::copy_if(voices_.begin(), voices_.end(), std::back_inserter(result),
-                 [&language](const Voice& v) { return v.language == language; });
+    std::ranges::copy_if(voices_, std::back_inserter(result),
+                         [&language](const Voice& v) { return v.language == language; });
     return result;
 }
 
