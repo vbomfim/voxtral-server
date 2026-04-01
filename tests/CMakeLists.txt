@@ -12,6 +12,9 @@ endmacro()
 add_executable(tts_tests
     test_config.cpp
     test_logger.cpp
+    test_backend.cpp
+    test_voices.cpp
+    test_inference_pool.cpp
 )
 tts_configure_test_target(tts_tests)
 include(GoogleTest)
