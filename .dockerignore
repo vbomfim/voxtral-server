@@ -1,0 +1,68 @@
+# Build artifacts
+build/
+cmake-build-*/
+out/
+.cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.github/
+.gitignore
+.gitmodules
+
+# Models (never include in Docker context)
+models/
+*.bin
+*.ggml
+*.gguf
+
+# Compiled objects
+*.o
+*.a
+*.so
+*.dylib
+*.exe
+
+# Documentation (not needed in image)
+docs/
+*.md
+!README.md
+LICENSE
+NOTICE
+
+# Kubernetes manifests
+k8s/
+
+# Docker compose files (not needed inside images)
+docker/docker-compose*.yml
+docker/nginx-tls.conf
+docker/certs/
+
+# Tests and benchmarks (not needed in production image)
+tests/
+benchmarks/
+
+# Secrets
+*.pem
+*.key
+*.crt
+*.env
+.env*
+secrets/
+
+# Logs
+*.log
+
+# Coverage
+build-cov/
+
+# OS
+.DS_Store
+Thumbs.db

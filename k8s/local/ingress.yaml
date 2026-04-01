@@ -1,0 +1,36 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: voxtral-server
+  namespace: opentts
+  annotations:
+    # TTS inference can take several minutes for long text
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    nginx.ingress.kubernetes.io/limit-connections: "50"
+    nginx.ingress.kubernetes.io/limit-rps: "20"
+    # nginx.ingress.kubernetes.io/ssl-redirect: "true"  # Uncomment when TLS is configured
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: voxtral.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: voxtral-server
+                port:
+                  number: 9090
+  # --- TLS configuration (uncomment to enable HTTPS) ---
+  # 1. Create a TLS secret:
+  #    kubectl create secret tls voxtral-tls --cert=cert.pem --key=key.pem -n opentts
+  # 2. Uncomment the tls block below
+  # 3. Uncomment the ssl-redirect annotation above
+  # tls:
+  #   - hosts:
+  #       - voxtral.local
+  #     secretName: voxtral-tls

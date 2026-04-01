@@ -1,0 +1,48 @@
+# syntax=docker/dockerfile:1
+# ---------------------------------------------------------------------------
+# voxtral-server — Model-baked image (template)
+#
+# This Dockerfile creates a self-contained image with the model weights
+# baked in. NOT built in CI (model is too large) — for manual builds only.
+#
+# Usage:
+#   # CPU image with model
+#   docker build -f docker/Dockerfile.with-model \
+#     --build-arg BASE_IMAGE=voxtral-server:cpu \
+#     --build-arg MODEL_URL=https://huggingface.co/mistralai/Voxtral-4B-TTS-GGUF/resolve/main/voxtral-4b.gguf \
+#     --build-arg MODEL_FILE=voxtral-4b.gguf \
+#     -t voxtral-server:with-model .
+#
+#   # CUDA image with model
+#   docker build -f docker/Dockerfile.with-model \
+#     --build-arg BASE_IMAGE=voxtral-server:cuda \
+#     --build-arg MODEL_URL=https://huggingface.co/mistralai/Voxtral-4B-TTS-GGUF/resolve/main/voxtral-4b.gguf \
+#     --build-arg MODEL_FILE=voxtral-4b.gguf \
+#     -t voxtral-server:cuda-with-model .
+#
+# Run (no volume mount needed):
+#   docker run -p 9090:9090 voxtral-server:with-model
+#
+# NOTE: The resulting image will be several GB due to the model weights.
+#       For production, prefer volume-mounting the model at runtime.
+# ---------------------------------------------------------------------------
+
+ARG BASE_IMAGE=voxtral-server:cpu
+
+FROM ubuntu:24.04 AS downloader
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG MODEL_URL
+ARG MODEL_FILE=voxtral-4b.gguf
+
+RUN mkdir -p /models && \
+    curl -L --progress-bar -o /models/${MODEL_FILE} ${MODEL_URL}
+
+FROM ${BASE_IMAGE}
+
+COPY --from=downloader /models /models
+
+ENV TTS_MODEL_PATH=/models/voxtral-4b.gguf

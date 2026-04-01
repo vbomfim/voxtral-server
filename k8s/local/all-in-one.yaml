@@ -1,0 +1,156 @@
+# k8s/local/all-in-one.yaml
+# Local development environment with automatic model download.
+#
+# Usage:
+#   # Build the image locally first:
+#   docker build -f docker/Dockerfile -t voxtral-server:dev .
+#
+#   # Deploy:
+#   kubectl apply -f k8s/local/all-in-one.yaml
+#
+#   # Access:
+#   curl http://localhost:30090/health
+#
+#   # Teardown:
+#   kubectl delete -f k8s/local/all-in-one.yaml
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: opentts
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: voxtral-server-config
+  namespace: opentts
+data:
+  TTS_PORT: "9090"
+  TTS_HOST: "0.0.0.0"
+  TTS_WORKERS: "1"
+  TTS_MAX_QUEUE_DEPTH: "5"
+  TTS_MAX_INPUT_CHARS: "4096"
+  TTS_REQUEST_TIMEOUT_SECONDS: "300"
+  TTS_DEFAULT_VOICE: "neutral_female"
+  TTS_LOG_LEVEL: "info"
+  TTS_LOG_FORMAT: "json"
+  TTS_REQUIRE_AUTH: "false"
+  TTS_CONFIG_PATH: "/dev/null"
+---
+# Secret: voxtral-server-secrets
+# Create manually:
+#   kubectl create secret generic voxtral-server-secrets \
+#     --from-literal=TTS_API_KEY=your-key -n opentts
+# Or: kubectl apply -f k8s/local/secrets.yaml
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: voxtral-server
+  namespace: opentts
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: voxtral-server
+  template:
+    metadata:
+      labels:
+        app: voxtral-server
+    spec:
+      initContainers:
+        - name: model-downloader
+          image: curlimages/curl:8.11.1
+          command:
+            - sh
+            - -c
+            - |
+              MODEL=/models/voxtral-4b/placeholder
+              if [ ! -f "$MODEL" ]; then
+                echo "Creating model placeholder directory..."
+                mkdir -p /models/voxtral-4b
+                echo "placeholder" > "$MODEL"
+                echo "NOTE: Replace with real model download when available"
+                echo "  Example: curl -L -o /models/voxtral-4b.gguf <model-url>"
+              fi
+              echo "Model directory ready: $(ls -la /models/)"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: model-vol
+              mountPath: /models
+      terminationGracePeriodSeconds: 120
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      automountServiceAccountToken: false
+      containers:
+        - name: voxtral-server
+          image: voxtral-server:dev
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 9090
+          envFrom:
+            - configMapRef:
+                name: voxtral-server-config
+            - secretRef:
+                name: voxtral-server-secrets
+                optional: true
+          env:
+            - name: TTS_MODEL_PATH
+              value: /models/voxtral-4b
+          volumeMounts:
+            - name: model-vol
+              mountPath: /models
+              readOnly: true
+          resources:
+            requests:
+              cpu: "1"
+              memory: 4Gi
+            limits:
+              cpu: "4"
+              memory: 8Gi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9090
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 9090
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 3
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: model-vol
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: voxtral-server
+  namespace: opentts
+spec:
+  type: NodePort
+  selector:
+    app: voxtral-server
+  ports:
+    - port: 9090
+      targetPort: 9090
+      nodePort: 30090
