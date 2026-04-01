@@ -25,6 +25,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     pkg-config \
     ca-certificates \
+    libopenblas-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
