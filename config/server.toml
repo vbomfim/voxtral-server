@@ -1,0 +1,30 @@
+# voxtral-server configuration
+# Environment variables (TTS_* prefix) override these values.
+
+[server]
+host = "0.0.0.0"
+port = 9090
+max_connections = 100
+
+[model]
+# path = "/models/voxtral-4b"   # Required — set via TTS_MODEL_PATH env var
+default_voice = "neutral_female"
+
+[inference]
+max_queue_depth = 10
+workers = 1
+max_input_chars = 4096
+request_timeout_seconds = 300
+
+[auth]
+# api_key = ""                  # Set via TTS_API_KEY env var (never in config files)
+require_auth = false
+rate_limit_max = 10
+rate_limit_window = 60
+request_rate_limit_rpm = 10
+trust_proxy = false
+trusted_proxy_hops = 1
+
+[logging]
+level = "info"
+# format = "json"               # "text" (default) or "json" for structured JSON logging

@@ -1,0 +1,49 @@
+# Build
+build/
+cmake-build-*/
+out/
+.cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Compiled
+*.o
+*.a
+*.so
+*.dylib
+*.exe
+
+# CMake
+compile_commands.json
+
+# Models (large binary files — never commit)
+models/
+*.bin
+*.ggml
+*.gguf
+
+# Distribution
+dist/
+
+# Secrets / credentials — never commit
+*.pem
+*.key
+*.crt
+*.env
+.env*
+secrets/
+
+# Third-party build artifacts
+third_party/*/build/
+
+# Logs
+*.log
+
+# Coverage
+build-cov/
