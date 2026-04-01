@@ -19,7 +19,7 @@ set(TTS_COMPILE_OPTIONS
     -Wstack-protector
     -fstack-protector-strong
     -fPIE
-    -D_FORTIFY_SOURCE=2
+    $<$<NOT:$<CONFIG:Debug>>:-D_FORTIFY_SOURCE=2>
 )
 
 set(TTS_LINK_OPTIONS "")
@@ -31,6 +31,13 @@ endif()
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type" FORCE)
 endif()
+
+# --- Version header (single source of truth from project() VERSION) ---
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/tts/version.hpp.in
+    ${CMAKE_CURRENT_BINARY_DIR}/include/tts/version.hpp
+    @ONLY
+)
 
 # --- FetchContent dependencies (all pinned to exact commit SHAs) ---
 include(FetchContent)
@@ -77,46 +84,53 @@ set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
 set(GENERATE_PKGCONFIG OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(prometheus_cpp)
 
-# --- Main server target ---
-add_executable(tts_server
-    src/main.cpp
+# --- Macro: mark third-party headers as SYSTEM to suppress -Werror ---
+macro(tts_add_system_includes TARGET_NAME)
+    get_target_property(_spdlog_inc spdlog::spdlog INTERFACE_INCLUDE_DIRECTORIES)
+    if(_spdlog_inc)
+        target_include_directories(${TARGET_NAME} SYSTEM PRIVATE ${_spdlog_inc})
+    endif()
+    get_target_property(_json_inc nlohmann_json::nlohmann_json INTERFACE_INCLUDE_DIRECTORIES)
+    if(_json_inc)
+        target_include_directories(${TARGET_NAME} SYSTEM PRIVATE ${_json_inc})
+    endif()
+    get_target_property(_toml_inc tomlplusplus::tomlplusplus INTERFACE_INCLUDE_DIRECTORIES)
+    if(_toml_inc)
+        target_include_directories(${TARGET_NAME} SYSTEM PRIVATE ${_toml_inc})
+    endif()
+endmacro()
+
+# --- Core library (compiled once, shared by server and tests) ---
+add_library(tts_core OBJECT
     src/config/config.cpp
     src/logging/logger.cpp
 )
-
-target_include_directories(tts_server PRIVATE
+target_include_directories(tts_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_BINARY_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
+tts_add_system_includes(tts_core)
+target_compile_options(tts_core PRIVATE ${TTS_COMPILE_OPTIONS})
+target_link_libraries(tts_core PUBLIC
+    nlohmann_json::nlohmann_json
+    spdlog::spdlog
+    tomlplusplus::tomlplusplus
+)
 
-# Mark third-party headers as SYSTEM to suppress warnings from -Werror
-get_target_property(_spdlog_inc spdlog::spdlog INTERFACE_INCLUDE_DIRECTORIES)
-if(_spdlog_inc)
-    target_include_directories(tts_server SYSTEM PRIVATE ${_spdlog_inc})
-endif()
-get_target_property(_json_inc nlohmann_json::nlohmann_json INTERFACE_INCLUDE_DIRECTORIES)
-if(_json_inc)
-    target_include_directories(tts_server SYSTEM PRIVATE ${_json_inc})
-endif()
-get_target_property(_toml_inc tomlplusplus::tomlplusplus INTERFACE_INCLUDE_DIRECTORIES)
-if(_toml_inc)
-    target_include_directories(tts_server SYSTEM PRIVATE ${_toml_inc})
-endif()
+# --- Main server target ---
+add_executable(tts_server src/main.cpp)
+tts_add_system_includes(tts_server)
 get_target_property(_prom_inc prometheus-cpp::core INTERFACE_INCLUDE_DIRECTORIES)
 if(_prom_inc)
     target_include_directories(tts_server SYSTEM PRIVATE ${_prom_inc})
 endif()
-
-# Apply hardened flags only to our code
 target_compile_options(tts_server PRIVATE ${TTS_COMPILE_OPTIONS})
 if(TTS_LINK_OPTIONS)
     target_link_options(tts_server PRIVATE ${TTS_LINK_OPTIONS})
 endif()
-
 target_link_libraries(tts_server PRIVATE
-    nlohmann_json::nlohmann_json
-    spdlog::spdlog
-    tomlplusplus::tomlplusplus
+    tts_core
     prometheus-cpp::core
 )
 

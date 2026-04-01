@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 #include "config/config.hpp"
 
+#include <climits>
+#include <cstdint>
 #include <cstdlib>
 #include <fstream>
 #include <string>
@@ -420,4 +422,60 @@ max_connections = 200
 )");
     auto cfg = ServerConfig::from_file_and_env(path);
     EXPECT_EQ(cfg.max_connections, 200);
+}
+
+// ============================================================================
+// safe_narrow tests (int64_t → int with overflow protection)
+// ============================================================================
+
+TEST(SafeNarrow, ValidInRange) {
+    using tts::config::safe_narrow;
+    EXPECT_EQ(safe_narrow(42, "test", 0), 42);
+    EXPECT_EQ(safe_narrow(-100, "test", 0), -100);
+    EXPECT_EQ(safe_narrow(0, "test", 99), 0);
+}
+
+TEST(SafeNarrow, ExactIntMax) {
+    using tts::config::safe_narrow;
+    EXPECT_EQ(safe_narrow(INT_MAX, "test", 0), INT_MAX);
+}
+
+TEST(SafeNarrow, ExactIntMin) {
+    using tts::config::safe_narrow;
+    EXPECT_EQ(safe_narrow(INT_MIN, "test", 0), INT_MIN);
+}
+
+TEST(SafeNarrow, PositiveOverflow) {
+    using tts::config::safe_narrow;
+    int64_t big = static_cast<int64_t>(INT_MAX) + 1;
+    EXPECT_EQ(safe_narrow(big, "test_field", -1), -1);
+}
+
+TEST(SafeNarrow, NegativeOverflow) {
+    using tts::config::safe_narrow;
+    int64_t small = static_cast<int64_t>(INT_MIN) - 1;
+    EXPECT_EQ(safe_narrow(small, "test_field", -1), -1);
+}
+
+// ============================================================================
+// model_path validation
+// ============================================================================
+
+TEST(ServerConfigValidation, EmptyModelPath_Throws) {
+    ServerConfig cfg;
+    // model_path is empty by default — validate() must reject
+    EXPECT_THROW(cfg.validate(), std::invalid_argument);
+}
+
+// ============================================================================
+// Oversized TOML integer (exercises safe_narrow via TOML loading path)
+// ============================================================================
+
+TEST(ServerConfigToml, OversizedTomlIntegerFallsBackToDefault) {
+    auto path = write_temp_toml(R"(
+[server]
+port = 99999999999
+)");
+    auto cfg = ServerConfig::from_file_and_env(path);
+    EXPECT_EQ(cfg.port, 9090);  // default kept — oversized int64 was rejected
 }

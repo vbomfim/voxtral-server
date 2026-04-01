@@ -24,7 +24,7 @@ void set_request_id(const std::string& request_id);
 const std::string& get_request_id();
 
 /// Parse a log level string to spdlog level enum.
-spdlog::level::level_enum parse_log_level(const std::string& level);
+[[nodiscard]] spdlog::level::level_enum parse_log_level(const std::string& level);
 
 /// Create a JSON formatter instance for use with spdlog.
 /// Exposed for testing and custom logger creation.

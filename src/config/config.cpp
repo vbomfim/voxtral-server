@@ -1,6 +1,8 @@
 #include "config/config.hpp"
 
+#include <climits>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <stdexcept>
 #include <string>
@@ -18,7 +20,7 @@ int safe_atoi(const char* str, int default_val) {
         std::size_t pos = 0;
         int result = std::stoi(str, &pos);
         // Reject trailing garbage: "42abc" should not parse as 42
-        if (pos != std::string(str).size()) {
+        if (pos != std::strlen(str)) {
             spdlog::warn("Invalid integer value '{}', using default {}", str, default_val);
             return default_val;
         }
@@ -27,6 +29,15 @@ int safe_atoi(const char* str, int default_val) {
         spdlog::warn("Invalid integer value '{}', using default {}", str, default_val);
         return default_val;
     }
+}
+
+int safe_narrow(int64_t val, const char* name, int default_val) {
+    if (val < static_cast<int64_t>(INT_MIN) || val > static_cast<int64_t>(INT_MAX)) {
+        spdlog::warn("TOML value for '{}' ({}) overflows int range, using default {}",
+                     name, val, default_val);
+        return default_val;
+    }
+    return static_cast<int>(val);
 }
 
 /// Parse boolean from string: "true" or "1" → true, anything else → false.
@@ -90,9 +101,9 @@ ServerConfig ServerConfig::from_file_and_env(const std::string& config_path) {
             if (auto v = tbl["server"]["host"].value<std::string>())
                 cfg.host = *v;
             if (auto v = tbl["server"]["port"].value<int64_t>())
-                cfg.port = static_cast<int>(*v);
+                cfg.port = safe_narrow(*v, "server.port", cfg.port);
             if (auto v = tbl["server"]["max_connections"].value<int64_t>())
-                cfg.max_connections = static_cast<int>(*v);
+                cfg.max_connections = safe_narrow(*v, "server.max_connections", cfg.max_connections);
 
             // [model]
             if (auto v = tbl["model"]["path"].value<std::string>())
@@ -102,27 +113,27 @@ ServerConfig ServerConfig::from_file_and_env(const std::string& config_path) {
 
             // [inference]
             if (auto v = tbl["inference"]["max_queue_depth"].value<int64_t>())
-                cfg.max_queue_depth = static_cast<int>(*v);
+                cfg.max_queue_depth = safe_narrow(*v, "inference.max_queue_depth", cfg.max_queue_depth);
             if (auto v = tbl["inference"]["workers"].value<int64_t>())
-                cfg.workers = static_cast<int>(*v);
+                cfg.workers = safe_narrow(*v, "inference.workers", cfg.workers);
             if (auto v = tbl["inference"]["max_input_chars"].value<int64_t>())
-                cfg.max_input_chars = static_cast<int>(*v);
+                cfg.max_input_chars = safe_narrow(*v, "inference.max_input_chars", cfg.max_input_chars);
             if (auto v = tbl["inference"]["request_timeout_seconds"].value<int64_t>())
-                cfg.request_timeout_seconds = static_cast<int>(*v);
+                cfg.request_timeout_seconds = safe_narrow(*v, "inference.request_timeout_seconds", cfg.request_timeout_seconds);
 
             // [auth]
             if (auto v = tbl["auth"]["require_auth"].value<bool>())
                 cfg.require_auth = *v;
             if (auto v = tbl["auth"]["rate_limit_max"].value<int64_t>())
-                cfg.auth_rate_limit_max = static_cast<int>(*v);
+                cfg.auth_rate_limit_max = safe_narrow(*v, "auth.rate_limit_max", cfg.auth_rate_limit_max);
             if (auto v = tbl["auth"]["rate_limit_window"].value<int64_t>())
-                cfg.auth_rate_limit_window = static_cast<int>(*v);
+                cfg.auth_rate_limit_window = safe_narrow(*v, "auth.rate_limit_window", cfg.auth_rate_limit_window);
             if (auto v = tbl["auth"]["request_rate_limit_rpm"].value<int64_t>())
-                cfg.request_rate_limit_rpm = static_cast<int>(*v);
+                cfg.request_rate_limit_rpm = safe_narrow(*v, "auth.request_rate_limit_rpm", cfg.request_rate_limit_rpm);
             if (auto v = tbl["auth"]["trust_proxy"].value<bool>())
                 cfg.trust_proxy = *v;
             if (auto v = tbl["auth"]["trusted_proxy_hops"].value<int64_t>())
-                cfg.trusted_proxy_hops = static_cast<int>(*v);
+                cfg.trusted_proxy_hops = safe_narrow(*v, "auth.trusted_proxy_hops", cfg.trusted_proxy_hops);
             // Note: api_key is intentionally NOT loaded from TOML (security).
             // It must be set via TTS_API_KEY environment variable.
 
@@ -152,6 +163,11 @@ void ServerConfig::validate() const {
     }
     if (max_connections < 1) {
         throw std::invalid_argument("max_connections must be >= 1");
+    }
+    if (model_path.empty()) {
+        throw std::invalid_argument(
+            "model_path must not be empty — "
+            "set [model].path in config or TTS_MODEL_PATH env var");
     }
     if (max_input_chars < 1) {
         throw std::invalid_argument("max_input_chars must be > 0");

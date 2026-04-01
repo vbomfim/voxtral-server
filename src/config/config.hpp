@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 namespace tts::config {
@@ -7,6 +8,10 @@ namespace tts::config {
 /// Safe integer parsing with fallback — replaces raw atoi/stoi.
 /// Returns default_val on any parse failure (empty string, non-numeric, overflow).
 int safe_atoi(const char* str, int default_val = 0);
+
+/// Safely narrow int64_t (TOML integer) to int with range check.
+/// Returns default_val and logs a warning if val overflows int range.
+int safe_narrow(int64_t val, const char* name, int default_val);
 
 /// Server configuration loaded from TOML file and/or environment variables.
 /// Environment variables (TTS_* prefix) take precedence over file values (12-factor).
@@ -43,10 +48,10 @@ struct ServerConfig {
     std::string config_path = "config/server.toml";
 
     /// Load configuration from TOML file, then override with environment variables.
-    static ServerConfig from_file_and_env(const std::string& config_path);
+    [[nodiscard]] static ServerConfig from_file_and_env(const std::string& config_path);
 
     /// Load configuration from environment variables only (no file).
-    static ServerConfig from_env();
+    [[nodiscard]] static ServerConfig from_env();
 
     /// Validate configuration. Throws std::invalid_argument on invalid config.
     void validate() const;

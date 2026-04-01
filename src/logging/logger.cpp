@@ -111,8 +111,10 @@ void initialize(const tts::config::ServerConfig& cfg) {
     spdlog::set_level(parse_log_level(cfg.log_level));
     if (cfg.log_format == "json") {
         spdlog::set_formatter(std::make_unique<JsonFormatter>());
+    } else {
+        // Explicitly reset to default text pattern for re-init idempotency
+        spdlog::set_pattern("%+");
     }
-    // Text format is spdlog's default — no action needed
 }
 
 std::unique_ptr<spdlog::formatter> make_json_formatter() {

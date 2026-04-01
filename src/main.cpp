@@ -22,7 +22,12 @@ static void print_usage(const char* program) {
 int main(int argc, char* argv[]) {
     std::string config_path = "config/server.toml";
 
-    // Parse command-line arguments
+    // TTS_CONFIG_PATH env var can override the default (lower priority than CLI)
+    if (auto* env_path = std::getenv("TTS_CONFIG_PATH")) {
+        config_path = env_path;
+    }
+
+    // Parse command-line arguments (--config wins over env var)
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--version") == 0) {
             std::cout << "voxtral-server v" << tts::VERSION << "\n";
@@ -39,11 +44,6 @@ int main(int argc, char* argv[]) {
             }
             config_path = argv[++i];
         }
-    }
-
-    // TTS_CONFIG_PATH env var can also set the config path
-    if (auto* env_path = std::getenv("TTS_CONFIG_PATH")) {
-        config_path = env_path;
     }
 
     // Load config from TOML file + environment variables

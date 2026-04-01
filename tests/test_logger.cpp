@@ -260,3 +260,45 @@ TEST(LoggerInit, SetsLogLevel) {
     cfg.log_level = "info";
     tts::logging::initialize(cfg);
 }
+
+// ============================================================================
+// Logger re-initialization: JSON → text resets formatter
+// ============================================================================
+
+TEST(LoggerInit, JsonThenText_ResetsToTextFormat) {
+    auto original_logger = spdlog::default_logger();
+
+    // Replace default logger with one that captures output
+    std::ostringstream oss;
+    auto sink = std::make_shared<spdlog::sinks::ostream_sink_mt>(oss);
+    spdlog::set_default_logger(std::make_shared<spdlog::logger>("", sink));
+
+    // Init as JSON
+    tts::config::ServerConfig cfg;
+    cfg.log_format = "json";
+    cfg.log_level = "info";
+    tts::logging::initialize(cfg);
+
+    spdlog::info("json output");
+    spdlog::default_logger()->flush();
+    std::string json_out = oss.str();
+    ASSERT_FALSE(json_out.empty());
+    EXPECT_EQ(json_out[0], '{');  // JSON starts with {
+
+    // Re-init as text
+    oss.str("");
+    oss.clear();
+    cfg.log_format = "text";
+    tts::logging::initialize(cfg);
+
+    spdlog::info("text output");
+    spdlog::default_logger()->flush();
+    std::string text_out = oss.str();
+    ASSERT_FALSE(text_out.empty());
+    EXPECT_NE(text_out[0], '{');  // text format must NOT produce JSON
+
+    // Restore original logger
+    spdlog::set_default_logger(original_logger);
+    cfg.log_level = "info";
+    tts::logging::initialize(cfg);
+}
