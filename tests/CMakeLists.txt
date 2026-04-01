@@ -45,3 +45,10 @@ target_link_libraries(tts_e2e_tests PRIVATE GTest::gtest_main)
 gtest_discover_tests(tts_e2e_tests
     PROPERTIES ENVIRONMENT "TTS_BINARY=$<TARGET_FILE:tts_server>"
 )
+
+# --- HTTP adapter integration tests (start real listener) ---
+add_executable(tts_http_adapter_tests
+    test_http_adapter.cpp
+)
+tts_configure_test_target(tts_http_adapter_tests)
+gtest_discover_tests(tts_http_adapter_tests)

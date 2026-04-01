@@ -84,6 +84,18 @@ set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
 set(GENERATE_PKGCONFIG OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(prometheus_cpp)
 
+# cpp-httplib (header-only, MIT) — lightweight HTTP server for API listener
+FetchContent_Declare(
+    httplib
+    GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
+    GIT_TAG        787a34ad7f01f20922a237d5142aae469828be72  # v0.20.0
+    GIT_SHALLOW    TRUE
+)
+set(HTTPLIB_REQUIRE_OPENSSL OFF CACHE BOOL "" FORCE)
+set(HTTPLIB_REQUIRE_ZLIB OFF CACHE BOOL "" FORCE)
+set(HTTPLIB_REQUIRE_BROTLI OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(httplib)
+
 # --- Macro: mark third-party headers as SYSTEM to suppress -Werror ---
 macro(tts_add_system_includes TARGET_NAME)
     get_target_property(_spdlog_inc spdlog::spdlog INTERFACE_INCLUDE_DIRECTORIES)
@@ -97,6 +109,10 @@ macro(tts_add_system_includes TARGET_NAME)
     get_target_property(_toml_inc tomlplusplus::tomlplusplus INTERFACE_INCLUDE_DIRECTORIES)
     if(_toml_inc)
         target_include_directories(${TARGET_NAME} SYSTEM PRIVATE ${_toml_inc})
+    endif()
+    get_target_property(_httplib_inc httplib::httplib INTERFACE_INCLUDE_DIRECTORIES)
+    if(_httplib_inc)
+        target_include_directories(${TARGET_NAME} SYSTEM PRIVATE ${_httplib_inc})
     endif()
 endmacro()
 
@@ -112,6 +128,7 @@ add_library(tts_core OBJECT
     src/server/validation.cpp
     src/server/request_handler.cpp
     src/server/server.cpp
+    src/server/http_adapter.cpp
 )
 target_include_directories(tts_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -130,6 +147,7 @@ target_link_libraries(tts_core PUBLIC
     spdlog::spdlog
     tomlplusplus::tomlplusplus
     prometheus-cpp::core
+    httplib::httplib
 )
 
 # --- Main server target ---
