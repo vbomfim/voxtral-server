@@ -1,0 +1,83 @@
+name: Benchmarks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: bench-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  benchmark:
+    name: Performance Benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Configure
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_BENCHMARKS=ON \
+            -DBUILD_TESTS=OFF
+
+      - name: Build benchmarks
+        run: cmake --build build -j"$(nproc)"
+
+      - name: Run benchmarks
+        run: |
+          ./build/benchmarks/tts_benchmarks \
+            --benchmark_format=json \
+            --benchmark_out=benchmark_results.json \
+            --benchmark_min_time=0.5s \
+            --benchmark_repetitions=3 \
+            --benchmark_report_aggregates_only=true
+
+      - name: Filter benchmark results
+        run: |
+          python3 -c "
+          import json
+          with open('benchmark_results.json') as f:
+              data = json.load(f)
+          # Remove _stddev and _cv aggregates — they cause false positives
+          # on shared CI runners with few baseline data points
+          data['benchmarks'] = [
+              b for b in data['benchmarks']
+              if not b['name'].endswith('_stddev') and not b['name'].endswith('_cv')
+          ]
+          with open('benchmark_results.json', 'w') as f:
+              json.dump(data, f, indent=2)
+          print(f'Filtered to {len(data[\"benchmarks\"])} benchmarks (removed stddev/cv aggregates)')
+          "
+
+      - name: Check for benchmark baseline
+        id: check-baseline
+        run: |
+          if git ls-remote --heads origin gh-pages | grep -q gh-pages; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "No benchmark baseline yet (first run — comparison skipped)"
+          fi
+
+      - name: Store benchmark results
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          tool: googlecpp
+          output-file-path: benchmark_results.json
+          benchmark-data-dir-path: dev/bench
+          alert-threshold: "120%"
+          fail-on-alert: ${{ github.event_name == 'pull_request' && steps.check-baseline.outputs.exists == 'true' }}
+          comment-on-alert: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          skip-fetch-gh-pages: ${{ steps.check-baseline.outputs.exists == 'false' }}

@@ -1,0 +1,53 @@
+# docker-compose.tls.yml
+# TLS-terminating reverse proxy for non-Kubernetes deployments.
+# The voxtral-server has no native TLS support (by design);
+# this compose file places an nginx reverse proxy in front of it
+# to handle TLS termination.
+#
+# Usage:
+#   docker compose -f docker/docker-compose.tls.yml up
+#
+# Certificate options:
+#   1. Let's Encrypt (certbot):
+#        Mount /etc/letsencrypt into the nginx container and reference
+#        the fullchain.pem / privkey.pem paths below.
+#   2. Self-signed (development / testing):
+#        openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+#          -keyout certs/key.pem -out certs/cert.pem \
+#          -subj "/CN=voxtral.example.com"
+#        Then place certs/ next to this file and the volume mount will
+#        make them available inside the container.
+
+services:
+  voxtral-server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    # Expose only on the internal Docker network; nginx handles
+    # the public-facing port.
+    expose:
+      - "9090"
+    environment:
+      - TTS_MODEL_PATH=/models/voxtral-4b
+      - TTS_API_KEY=${TTS_API_KEY}
+      - TTS_LOG_FORMAT=json
+    volumes:
+      - ./models:/models:ro
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  nginx:
+    image: nginx:1-alpine
+    ports:
+      - "443:443"
+    volumes:
+      # TLS certificates — replace with your own paths as needed
+      - ./certs/cert.pem:/etc/nginx/certs/cert.pem:ro
+      - ./certs/key.pem:/etc/nginx/certs/key.pem:ro
+      - ./nginx-tls.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - voxtral-server
+    restart: unless-stopped

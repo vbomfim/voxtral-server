@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: voxtral-server-config
+  namespace: opentts
+  labels:
+    app.kubernetes.io/name: voxtral-server
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: voxtral-server
+    app.kubernetes.io/managed-by: kubectl
+data:
+  TTS_PORT: "9090"
+  TTS_HOST: "0.0.0.0"
+  TTS_MAX_CONNECTIONS: "100"
+  TTS_WORKERS: "1"
+  TTS_MAX_QUEUE_DEPTH: "10"
+  TTS_MAX_INPUT_CHARS: "4096"
+  TTS_REQUEST_TIMEOUT_SECONDS: "300"
+  TTS_DEFAULT_VOICE: "neutral_female"
+  TTS_LOG_LEVEL: "info"
+  TTS_LOG_FORMAT: "json"
+  TTS_REQUIRE_AUTH: "true"
+  TTS_REQUEST_RATE_LIMIT_RPM: "10"
+  TTS_TRUST_PROXY: "true"
+  TTS_TRUSTED_PROXY_HOPS: "1"

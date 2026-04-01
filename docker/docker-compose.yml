@@ -1,0 +1,29 @@
+# docker-compose.yml — Quick start for voxtral-server
+#
+# Usage:
+#   # 1. Place model files in ./models/ directory
+#   # 2. Start:
+#   docker compose -f docker/docker-compose.yml up
+#
+#   # With API key authentication:
+#   TTS_API_KEY=your-secret-key docker compose -f docker/docker-compose.yml up
+
+services:
+  voxtral-server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "9090:9090"
+    environment:
+      - TTS_MODEL_PATH=/models/voxtral-4b
+      - TTS_API_KEY=${TTS_API_KEY}
+      - TTS_LOG_FORMAT=json
+    volumes:
+      - ./models:/models:ro
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

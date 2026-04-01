@@ -1,0 +1,67 @@
+# syntax=docker/dockerfile:1
+# ---------------------------------------------------------------------------
+# voxtral-server — CUDA GPU image
+#
+# Multi-stage build:
+#   1. Builder: nvidia/cuda:12.6.0-devel → compiles with CUDA support
+#   2. Runtime: nvidia/cuda:12.6.0-runtime → minimal GPU runtime
+#
+# Build:
+#   docker build -f docker/Dockerfile.cuda -t voxtral-server:cuda .
+#
+# Run:
+#   docker run --gpus all -p 9090:9090 \
+#     -v /path/to/models:/models:ro \
+#     -e TTS_MODEL_PATH=/models/voxtral-4b \
+#     voxtral-server:cuda
+# ---------------------------------------------------------------------------
+
+# ---- Build stage (CUDA) ----
+FROM nvidia/cuda:12.6.0-devel-ubuntu24.04 AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    cmake \
+    git \
+    pkg-config \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+COPY . .
+
+# Initialize submodules (if present)
+RUN git submodule update --init --recursive 2>/dev/null || true
+
+RUN mkdir -p build && cd build && \
+    cmake .. \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DBUILD_TESTS=OFF \
+      -DBUILD_BENCHMARKS=OFF \
+      -DGGML_CUDA=ON \
+      -DCMAKE_CUDA_ARCHITECTURES="75;80;86;89;90" && \
+    cmake --build . -j"$(nproc)"
+
+# ---- Runtime stage (CUDA) ----
+FROM nvidia/cuda:12.6.0-runtime-ubuntu24.04 AS runtime
+
+# Create nonroot user (matches distroless UID 65532)
+RUN groupadd --gid 65532 nonroot && \
+    useradd --uid 65532 --gid 65532 --shell /bin/false nonroot && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy binary
+COPY --from=builder /build/build/tts_server /usr/local/bin/tts_server
+
+# Copy default config
+COPY --from=builder /build/config/server.toml /etc/voxtral/server.toml
+
+EXPOSE 9090
+
+ENV TTS_CONFIG_PATH=/etc/voxtral/server.toml
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+USER nonroot
+
+ENTRYPOINT ["tts_server"]

@@ -1,0 +1,33 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: voxtral-server-pdb
+  namespace: opentts
+  labels:
+    app.kubernetes.io/name: voxtral-server
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: voxtral-server
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: voxtral-server
+      app.kubernetes.io/component: server
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: voxtral-server-gpu-pdb
+  namespace: opentts
+  labels:
+    app.kubernetes.io/name: voxtral-server
+    app.kubernetes.io/component: server-gpu
+    app.kubernetes.io/part-of: voxtral-server
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: voxtral-server
+      app.kubernetes.io/component: server-gpu
