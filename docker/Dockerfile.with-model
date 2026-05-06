@@ -29,7 +29,7 @@
 
 ARG BASE_IMAGE=voxtral-server:cpu
 
-FROM ubuntu:24.04 AS downloader
+FROM ubuntu:26.04 AS downloader
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl ca-certificates \
